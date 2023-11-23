@@ -17,6 +17,7 @@ sem_t producerSem, consumerSem;
 std::queue<string> q;
 mutex mtx; // Mutex for thread synchronization
 bool isConsumerConnected = false;
+bool isProducerConnected = false;
 
 void setConsumerAndProducer(string clientType, int socket) {
     const char* ACK = "ACK";
@@ -25,6 +26,7 @@ void setConsumerAndProducer(string clientType, int socket) {
     
     if (clientType == "PRODUCER") {
         cout << "Connected with a PRODUCER" << endl;
+        isProducerConnected = true;
         send(socket, ACK, strlen(ACK), 0);
     } else if (clientType == "CONSUMER") {
         cout << "Connected with a CONSUMER" << endl;
@@ -36,7 +38,7 @@ void setConsumerAndProducer(string clientType, int socket) {
 }
 
 void Producer(int socket) {
-    if(q.size() < 10) {
+    if(q.size() < 10 && isProducerConnected) {
         char buffer[1024] = {0};
         int i = 0;
         string test = "ACK";
@@ -117,7 +119,8 @@ int main() {
         }
 
         std::thread clientThread(handleConnection, new_socket);
-        clientThread.detach(); // Detach the thread
+        clientThread.join();
+        //clientThread.detach(); // Detach the thread
     }
 
     sem_destroy(&producerSem);

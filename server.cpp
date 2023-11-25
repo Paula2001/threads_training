@@ -63,7 +63,7 @@ void Producer(int socket) {
             }
         }
         sem_post(&consumerSem); // End
-        sleep(3);
+        sleep(1);
     }
 }
 
@@ -75,10 +75,12 @@ void Consumer(int socket) {
 
         while (!q.empty()) {
             send(socket, q.front().c_str(), q.front().length(), 0);
+            int read_bytes = read(socket, buffer, 1024);
             q.pop(); // Remove the front element
         }
 
         send(socket, test.c_str(), test.length(), 0);
+        // TODO : add ACK in here from the consumer
     }
     sem_post(&producerSem); // End
 }

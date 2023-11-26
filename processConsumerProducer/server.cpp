@@ -21,23 +21,22 @@
 
 using namespace std;
 
-#define PORT 9000
+#define PORT 9001
 #define N 1000
 #define BUFFER_SIZE 1024
 #define PIPE_BUFFER_SIZE 1024
 #define ACK "ACK"
 #define SEM_EMPTY "/semaphore_empty"
 #define SEM_FULL "/semaphore_full"
-#define SEM_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)
+#define FIFO_PATH "mypipe"
 
-pthread_mutex_t mutx;
 std::queue<string> q;
-int pipefd[2];
 
 sem_t *empt ;
 sem_t *full;
 
 void producer(int socketProducer) {
+    auto pipeWriteOnly = open( FIFO_PATH, O_WRONLY);
     while (true) {
         char buffer[BUFFER_SIZE] = {0};
         int read_bytes = read(socketProducer, buffer, BUFFER_SIZE);
@@ -46,8 +45,8 @@ void producer(int socketProducer) {
             break; // Exiting the loop and ending the thread
         }
         auto sizeOfChar = to_string(strlen(buffer)).c_str();
-        write(pipefd[1],sizeOfChar , 2);
-        write(pipefd[1], buffer, read_bytes);
+        write(pipeWriteOnly,sizeOfChar , 2);
+        write(pipeWriteOnly, buffer, read_bytes);
 
         sem_wait(empt);
         cout << "this is a test" << endl;
@@ -66,10 +65,11 @@ void consumer(int socketConsumer) {
     char ackBuf[3] = {0};
     char lengthBuffer[1] = {0};
     char wordBuffer[50] = {0};
+    auto pipeReadOnly = open( FIFO_PATH, O_RDONLY );
     while (true) {
         sem_wait(full);
-        read(pipefd[0], lengthBuffer, 2);
-        read(pipefd[0], wordBuffer, atoi(lengthBuffer));
+        read(pipeReadOnly, lengthBuffer, 2);
+        read(pipeReadOnly, wordBuffer, atoi(lengthBuffer));
 
         int sent_bytes = send(socketConsumer, wordBuffer, atoi(lengthBuffer), 0);
         cout << "===" <<endl;
@@ -104,15 +104,15 @@ void setConsumerOrProducer(int socket, const string& type) {
     pthread_detach(thread); // Detach the thread
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     sem_unlink(SEM_FULL);
     sem_unlink(SEM_EMPTY);
     empt = sem_open(SEM_EMPTY, O_CREAT, 0644, N);
     full = sem_open(SEM_FULL, O_CREAT, 0644, 0);
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
-        return 1;
-    }
+//    if (pipe(pipefd) == -1) {
+//        perror("pipe");
+//        return 1;
+//    }
 
 
 
@@ -129,7 +129,7 @@ int main() {
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(atoi(argv[1]));
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("bind failed");

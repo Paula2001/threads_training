@@ -1,0 +1,3 @@
+### Important commands
+
+mkfifo mypipe

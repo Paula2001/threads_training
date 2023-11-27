@@ -27,6 +27,7 @@ using namespace std;
 #define PIPE_BUFFER_SIZE 1024
 #define ACK "ACK"
 #define SEM_EMPTY "/semaphore_empty"
+#define SEM_MUTEX "/semaphore_mutex"
 #define SEM_FULL "/semaphore_full"
 #define FIFO_PATH "mypipe"
 
@@ -34,27 +35,26 @@ std::queue<string> q;
 
 sem_t *empt ;
 sem_t *full;
+sem_t *mutx;
 
 void producer(int socketProducer) {
     auto pipeWriteOnly = open( FIFO_PATH, O_WRONLY);
     while (true) {
         char buffer[BUFFER_SIZE] = {0};
+        sem_wait(empt);
+        sem_wait(mutx);
         int read_bytes = read(socketProducer, buffer, BUFFER_SIZE);
         if (read_bytes <= 0) {
             cout << "Producer disconnected or error occurred." << endl;
             break; // Exiting the loop and ending the thread
         }
+
         auto sizeOfChar = to_string(strlen(buffer)).c_str();
         write(pipeWriteOnly,sizeOfChar , 2);
         write(pipeWriteOnly, buffer, read_bytes);
 
-        sem_wait(empt);
-        cout << "this is a test" << endl;
-
-        cout << "Producer: " << buffer << endl;
-        q.emplace(buffer);
         send(socketProducer, ACK, strlen(ACK), 0);
-
+        sem_post(mutx);
         sem_post(full);
     }
 
@@ -68,8 +68,10 @@ void consumer(int socketConsumer) {
     auto pipeReadOnly = open( FIFO_PATH, O_RDONLY );
     while (true) {
         sem_wait(full);
-        read(pipeReadOnly, lengthBuffer, 2);
-        read(pipeReadOnly, wordBuffer, atoi(lengthBuffer));
+        sem_wait(mutx);
+
+        read(pipeReadOnly, lengthBuffer, 2); // INF: send buffer length first 2 bytes
+        read(pipeReadOnly, wordBuffer, atoi(lengthBuffer)); // INF: read word
 
         int sent_bytes = send(socketConsumer, wordBuffer, atoi(lengthBuffer), 0);
         cout << "===" <<endl;
@@ -81,11 +83,13 @@ void consumer(int socketConsumer) {
             cout << "Consumer disconnected or error occurred." << endl;
             break; // Exiting the loop and ending the thread
         }
+        sem_post(mutx);
         sem_post(empt);
 
         read(socketConsumer, ackBuf, 3);
 
-    }
+    }        sem_wait(mutx);
+
 
     close(socketConsumer);
 }
@@ -107,6 +111,8 @@ void setConsumerOrProducer(int socket, const string& type) {
 int main(int argc, char *argv[]) {
     sem_unlink(SEM_FULL);
     sem_unlink(SEM_EMPTY);
+    sem_unlink(SEM_MUTEX);
+    mutx = sem_open(SEM_MUTEX, O_CREAT, 0644, 1);
     empt = sem_open(SEM_EMPTY, O_CREAT, 0644, N);
     full = sem_open(SEM_FULL, O_CREAT, 0644, 0);
 //    if (pipe(pipefd) == -1) {
@@ -153,7 +159,7 @@ int main(int argc, char *argv[]) {
         int read_bytes = read(new_socket, buffer, 10);
         if (read_bytes <= 0) {
             close(new_socket);
-            continue; // Ignore this connection if an error occurred
+            // continue;
         }
 
         string type(buffer);

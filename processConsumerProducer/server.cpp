@@ -9,15 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <semaphore.h>
-#include <sys/types.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <semaphore.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 
 using namespace std;
 
@@ -99,8 +91,18 @@ void setConsumerOrProducer(int socket, const string& type) {
     pid_t process = fork();
     if(process == 0){ // INF: this is a child process
         if (type == "PRODUCER") {
+            sem_unlink(SEM_FULL);
+            sem_unlink(SEM_EMPTY);
+            sem_unlink(SEM_MUTEX);
+            mutx = sem_open(SEM_MUTEX, O_CREAT, 0644, 1);
+            empt = sem_open(SEM_EMPTY, O_CREAT, 0644, N);
+            full = sem_open(SEM_FULL, O_CREAT, 0644, 0);
+
             producer(socket);
         } else if (type == "CONSUMER") {
+            mutx = sem_open(SEM_MUTEX, O_RDONLY, 0644);
+            empt = sem_open(SEM_EMPTY, O_RDONLY, 0644);
+            full = sem_open(SEM_FULL, O_RDONLY, 0644);
             consumer(socket);
         }
     }
@@ -109,19 +111,10 @@ void setConsumerOrProducer(int socket, const string& type) {
 }
 
 int main(int argc, char *argv[]) {
+
     sem_unlink(SEM_FULL);
     sem_unlink(SEM_EMPTY);
     sem_unlink(SEM_MUTEX);
-    mutx = sem_open(SEM_MUTEX, O_CREAT, 0644, 1);
-    empt = sem_open(SEM_EMPTY, O_CREAT, 0644, N);
-    full = sem_open(SEM_FULL, O_CREAT, 0644, 0);
-//    if (pipe(pipefd) == -1) {
-//        perror("pipe");
-//        return 1;
-//    }
-
-
-
 
     int server_fd;
     struct sockaddr_in address;
@@ -159,7 +152,7 @@ int main(int argc, char *argv[]) {
         int read_bytes = read(new_socket, buffer, 10);
         if (read_bytes <= 0) {
             close(new_socket);
-            // continue;
+            continue;
         }
 
         string type(buffer);

@@ -5,9 +5,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <sys/mman.h>
+#include <semaphore.h>
+#include <fcntl.h> // For O_* constants
 
-#define PORT 9130
+#define PORT 9131
 #define WIDTH 20
 #define HEIGHT 10
 #define MAX_SNAKE_SIZE WIDTH * HEIGHT
@@ -18,7 +20,11 @@
 #define LEFT 2
 #define RIGHT 3
 
-// Snake Game Structures and Functions
+// Shared memory and semaphore names
+#define SHM_NAME "/my_shm"
+#define SEM_NAME "/my_sem"
+
+// Snake Game Structures
 typedef struct {
     int x, y;
 } Point;
@@ -29,20 +35,19 @@ typedef struct {
     int dir;
 } Snake;
 
+typedef struct {
+    Snake snake;
+    char board[HEIGHT][WIDTH];
+} Game;
+
+// Global semaphore pointer
+sem_t *sem;
+
 void initBoard(char board[HEIGHT][WIDTH]) {
     for (int y = 0; y < HEIGHT; y++) {
         for (int x = 0; x < WIDTH; x++) {
             board[y][x] = ' ';
         }
-    }
-}
-
-void printBoard(char board[HEIGHT][WIDTH]) {
-    for (int y = 0; y < HEIGHT; y++) {
-        for (int x = 0; x < WIDTH; x++) {
-            printf("%c ", board[y][x]);
-        }
-        printf("\n");
     }
 }
 
@@ -53,7 +58,7 @@ void initSnake(Snake *snake) {
     snake->dir = LEFT;
 }
 
-void moveSnake(Snake *snake, char board[HEIGHT][WIDTH], Point *prevHead) {
+void moveSnake(Snake *snake, Point *prevHead) {
     *prevHead = snake->body[0];
 
     switch (snake->dir) {
@@ -86,14 +91,7 @@ int updateBoard(Snake *snake, char board[HEIGHT][WIDTH], Point prevHead) {
         }
     }
 
-    for (int i = 0; i <= snake->size; i++) {
-        Point p = snake->body[i];
-        if (i == 0) {
-            board[p.y][p.x] = 'O';
-        } else {
-            board[p.y][p.x] = 'X';
-        }
-    }
+    board[head.y][head.x] = 'O';
 
     return 0;
 }
@@ -111,16 +109,14 @@ void changeDirection(Snake *snake, const char *command) {
 }
 
 // Server-specific Functions
-void handleConnection(int socket) {
+void handleConnection(int socket, Game *game) {
     char buffer[1024] = {0};
-    char board[HEIGHT][WIDTH];
-    Snake snake;
-    Point prevHead = {0, 0};
     int gameOver = 0;
 
-    initBoard(board);
-    initSnake(&snake);
-    updateBoard(&snake, board, prevHead);
+    sem_wait(sem);
+    initBoard(game->board);
+    initSnake(&game->snake);
+    sem_post(sem);
 
     while (!gameOver) {
         int read_bytes = read(socket, buffer, 1024);
@@ -134,16 +130,19 @@ void handleConnection(int socket) {
         if (strcmp(buffer, "EXIT") == 0) {
             break;
         } else {
-            changeDirection(&snake, buffer);
-            moveSnake(&snake, board, &prevHead);
-            gameOver = updateBoard(&snake, board, prevHead);
+            changeDirection(&game->snake, buffer);
+            Point prevHead;
+            moveSnake(&game->snake, &prevHead);
+            sem_wait(sem);
+            gameOver = updateBoard(&game->snake, game->board, prevHead);
+            sem_post(sem);
         }
 
         // Convert the game board to a string
         std::string boardString;
         for (int y = 0; y < HEIGHT; y++) {
             for (int x = 0; x < WIDTH; x++) {
-                boardString.push_back(board[y][x]);
+                boardString.push_back(game->board[y][x]);
                 boardString.push_back(' ');
             }
             boardString.push_back('\n');
@@ -154,11 +153,37 @@ void handleConnection(int socket) {
     }
 }
 
-
 int main() {
     int server_fd;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
+
+    // Create a named shared memory object
+    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("shm_open failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set the size of the shared memory object
+    if (ftruncate(shm_fd, sizeof(Game)) == -1) {
+        perror("ftruncate failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Map the shared memory object
+    Game *game = (Game *)mmap(NULL, sizeof(Game), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (game == MAP_FAILED) {
+        perror("mmap failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize the semaphore
+    sem = sem_open(SEM_NAME, O_CREAT, 0666, 1);
+    if (sem == SEM_FAILED) {
+        perror("sem_open failed");
+        exit(EXIT_FAILURE);
+    }
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == 0) {
@@ -190,7 +215,7 @@ int main() {
 
         pid_t child_pid = fork();
         if (child_pid == 0) {
-            handleConnection(new_socket);
+            handleConnection(new_socket, game);
             close(new_socket);
             exit(0);
         } else if (child_pid > 0) {

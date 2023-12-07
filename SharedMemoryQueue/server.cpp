@@ -9,19 +9,37 @@
 
 using namespace std;
 
-#define PORT 9001
+#define PORT 9000
 #define BUFFER_SIZE 1024
 #define ACK "ACK"
-#define MSG_NUM 10
+#define MSG_NUM 1000
 #define MSG_LEN 1024
 
 struct ShmQueue {
     sem_t m_full, m_empty, m_mutex;
     char m_data[MSG_NUM][MSG_LEN];
     int m_first_msg, m_last_msg;
+    bool m_consumer_connected;
+};
+
+struct ShmQueueZ {
+    sem_t m_full, m_empty, m_mutex;
+    char m_data[MSG_NUM][MSG_LEN];
+    int m_first_msg, m_last_msg;
+    bool m_consumer_connected;
 };
 
 ShmQueue* shmQueue;
+ShmQueueZ* shmQueueZ;
+
+int isFirstLetterBetweenAandL(const char *str) {
+    if (str[0] == '\0') {  // Check if the string is empty
+        return 0; // Return 0 (false) if the string is empty
+    }
+
+    char firstLetter = tolower(str[0]);  // Convert the first letter to lowercase
+    return (firstLetter >= 'a' && firstLetter <= 'l'); // Check if it's between 'a' and 'l'
+}
 
 void down(sem_t *sem) {
     sem_wait(sem);
@@ -36,7 +54,7 @@ int my_send(ShmQueue *t_myq, char *t_msg, int t_len) {
     down(&t_myq->m_mutex);
 
     // Insert item
-    strncpy(t_myq->m_data[t_myq->m_last_msg], t_msg, t_len);
+    strncpy(t_myq->m_data[t_myq->m_last_msg], t_msg, MSG_LEN);
     t_myq->m_last_msg = (t_myq->m_last_msg + 1) % MSG_NUM;
 
     up(&t_myq->m_mutex);
@@ -49,7 +67,33 @@ int my_receive(ShmQueue *t_myq, char *t_msg, int t_len) {
     down(&t_myq->m_mutex);
 
     // Remove item
-    strncpy(t_msg, t_myq->m_data[t_myq->m_first_msg], t_len);
+    strncpy(t_msg, t_myq->m_data[t_myq->m_first_msg], MSG_LEN);
+    t_myq->m_first_msg = (t_myq->m_first_msg + 1) % MSG_NUM;
+
+    up(&t_myq->m_mutex);
+    up(&t_myq->m_empty);
+    return 0;
+}
+
+int my_send_z(ShmQueueZ *t_myq, char *t_msg, int t_len) {
+    down(&t_myq->m_empty);
+    down(&t_myq->m_mutex);
+
+    // Insert item
+    strncpy(t_myq->m_data[t_myq->m_last_msg], t_msg, MSG_LEN);
+    t_myq->m_last_msg = (t_myq->m_last_msg + 1) % MSG_NUM;
+
+    up(&t_myq->m_mutex);
+    up(&t_myq->m_full);
+    return 0;
+}
+
+int my_receive_z(ShmQueueZ *t_myq, char *t_msg, int t_len) {
+    down(&t_myq->m_full);
+    down(&t_myq->m_mutex);
+
+    // Remove item
+    strncpy(t_msg, t_myq->m_data[t_myq->m_first_msg], MSG_LEN);
     t_myq->m_first_msg = (t_myq->m_first_msg + 1) % MSG_NUM;
 
     up(&t_myq->m_mutex);
@@ -65,9 +109,12 @@ void producer(int socketProducer) {
             cout << "Producer disconnected or error occurred." << endl;
             break;
         }
-
-        // Send the message to the shared memory queue
-        my_send(shmQueue, buffer, read_bytes);
+        buffer[read_bytes] = '\0';
+        if(isFirstLetterBetweenAandL(buffer)){
+            my_send(shmQueue, buffer, read_bytes);
+        }else{
+            my_send_z(shmQueueZ, buffer, read_bytes);
+        }
 
         send(socketProducer, ACK, strlen(ACK), 0);
     }
@@ -75,12 +122,32 @@ void producer(int socketProducer) {
     close(socketProducer);
 }
 
-void consumer(int socketConsumer) {
+void consumerA(int socketConsumer) {
     char buffer[BUFFER_SIZE] = {0};
     char ackBuf[3] = {0};
 
     while (true) {
         my_receive(shmQueue, buffer, BUFFER_SIZE);
+
+        int sent_bytes = send(socketConsumer, buffer, strlen(buffer), 0);
+        cout << sent_bytes << endl;
+        if (sent_bytes <= 0) {
+            cout << "Consumer disconnected or error occurred." << endl;
+            break;
+        }
+
+        read(socketConsumer, ackBuf, 3);
+    }
+
+    close(socketConsumer);
+}
+
+void consumerZ(int socketConsumer) {
+    char buffer[BUFFER_SIZE] = {0};
+    char ackBuf[3] = {0};
+
+    while (true) {
+        my_receive_z(shmQueueZ, buffer, BUFFER_SIZE);
 
         int sent_bytes = send(socketConsumer, buffer, strlen(buffer), 0);
         cout << sent_bytes << endl;
@@ -101,7 +168,13 @@ void setConsumerOrProducer(int socket, const string& type) {
         if (type == "PRODUCER") {
             producer(socket);
         } else if (type == "CONSUMER") {
-            consumer(socket);
+            if(!shmQueue->m_consumer_connected){
+                shmQueue->m_consumer_connected = true;
+                consumerA(socket);
+            }else if(!shmQueueZ->m_consumer_connected){
+                shmQueueZ->m_consumer_connected = true;
+                consumerZ(socket);
+            }
         }
     }
 }
@@ -118,6 +191,15 @@ int main(int argc, char *argv[]) {
     sem_init(&shmQueue->m_mutex, 1, 1);
     shmQueue->m_first_msg = 0;
     shmQueue->m_last_msg = 0;
+    shmQueue->m_consumer_connected = false;
+    // Initialize shared memory for ShmQueueZ
+    shmQueueZ = (ShmQueueZ*)mmap(NULL, sizeof(ShmQueueZ), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    sem_init(&shmQueueZ->m_full, 1, 0);
+    sem_init(&shmQueueZ->m_empty, 1, MSG_NUM);
+    sem_init(&shmQueueZ->m_mutex, 1, 1);
+    shmQueueZ->m_first_msg = 0;
+    shmQueueZ->m_last_msg = 0;
+    shmQueueZ->m_consumer_connected = false;
 
     // Socket setup
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -143,7 +225,7 @@ int main(int argc, char *argv[]) {
     while (true) {
         cout << "Waiting for connection" << endl;
         int new_socket;
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+            if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
             perror("accept");
             continue;
         }

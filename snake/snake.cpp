@@ -23,7 +23,11 @@
 // Shared memory and semaphore names
 #define SHM_NAME "/my_shm"
 #define SEM_NAME "/my_sem"
-
+// Shared memory and semaphore names
+#define SHM_NAME "/my_shm"
+#define SEM_NAME_LOCK "/lock_mem"
+#define SEM_NAME_PLAYER0 "/player0"
+#define SEM_NAME_PLAYER1 "/player1"
 // Snake Game Structures
 typedef struct {
     int x, y;
@@ -41,7 +45,8 @@ typedef struct {
 } Game;
 
 // Global semaphore pointer
-sem_t *sem;
+sem_t *lock_mem;
+sem_t *player[2];
 
 void initBoard(char board[HEIGHT][WIDTH]) {
     for (int y = 0; y < HEIGHT; y++) {
@@ -113,10 +118,8 @@ void handleConnection(int socket, Game *game) {
     char buffer[1024] = {0};
     int gameOver = 0;
 
-    sem_wait(sem);
     initBoard(game->board);
     initSnake(&game->snake);
-    sem_post(sem);
 
     while (!gameOver) {
         int read_bytes = read(socket, buffer, 1024);
@@ -133,9 +136,7 @@ void handleConnection(int socket, Game *game) {
             changeDirection(&game->snake, buffer);
             Point prevHead;
             moveSnake(&game->snake, &prevHead);
-            sem_wait(sem);
             gameOver = updateBoard(&game->snake, game->board, prevHead);
-            sem_post(sem);
         }
 
         // Convert the game board to a string
@@ -179,11 +180,10 @@ int main() {
     }
 
     // Initialize the semaphore
-    sem = sem_open(SEM_NAME, O_CREAT, 0666, 1);
-    if (sem == SEM_FAILED) {
-        perror("sem_open failed");
-        exit(EXIT_FAILURE);
-    }
+    // Initialize semaphores
+    lock_mem = sem_open(SEM_NAME_LOCK, O_CREAT, 0666, 1);
+    player[0] = sem_open(SEM_NAME_PLAYER0, O_CREAT, 0666, 1);
+    player[1] = sem_open(SEM_NAME_PLAYER1, O_CREAT, 0666, 0);
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == 0) {

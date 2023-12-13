@@ -9,6 +9,67 @@
 
 #define PORT 8081
 #define BUFFER_SIZE 1024
+#define QUERY_PARAM_FILE_KEY "file_name"
+
+char* readFileContent(const char *filename) {
+    FILE *file;
+    char *content;
+    long file_size;
+
+    file = fopen(filename, "r"); // Open the file for reading
+    if (file == NULL) {
+        perror("Failed to open the file");
+        return NULL;
+    }
+
+    // Seek to the end of the file to determine its size
+    fseek(file, 0, SEEK_END);
+    file_size = ftell(file);
+    rewind(file);
+
+    // Allocate memory for the entire content
+    content = (char *)malloc(file_size + 1);
+    if (content == NULL) {
+        perror("Failed to allocate memory");
+        fclose(file);
+        return NULL;
+    }
+
+    // Read the file into memory and null-terminate the string
+    fread(content, 1, file_size, file);
+    content[file_size] = '\0';
+
+    fclose(file); // Close the file
+    return content;
+}
+
+
+char* get_query_param_value(const char* query, const char* key) {
+    if (query == NULL || key == NULL) {
+        return NULL;
+    }
+
+    // Copy the query string to a mutable buffer
+    char* buffer = strdup(query);
+    char* value = NULL;
+
+    // Tokenize the query string on '&'
+    char* token = strtok(buffer, "&");
+    while (token != NULL) {
+        // Check if the token contains the key
+        if (strncmp(token, key, strlen(key)) == 0 && token[strlen(key)] == '=') {
+            // Find the start of the value
+            char* value_start = strchr(token, '=') + 1;
+            value = strdup(value_start);
+            break;
+        }
+        token = strtok(NULL, "&");
+    }
+
+    // Clean up and return the result
+    free(buffer);
+    return value;
+}
 
 void *handle_connection(void *socket_desc) {
     int* s = (int *)socket_desc;
@@ -23,10 +84,37 @@ void *handle_connection(void *socket_desc) {
 
         // Check if the request is a GET request
         if (strncmp(buffer, "GET", 3) == 0) {
-            char response[] =
+            char *start = strchr(buffer, ' ') + 1;
+            char *end = strchr(start, ' ');
+
+            // Extract the path and query
+            char path_and_query[1024] = {0};
+            strncpy(path_and_query, start, end - start);
+
+            // Optionally, separate the path and the query
+            char *query = strchr(path_and_query, '?');
+            if (query) {
+                // Skip over the '?' to get the query parameters
+                query++;
+                printf("Query params: %s\n", query);
+            }
+            char* x = readFileContent(get_query_param_value(query, QUERY_PARAM_FILE_KEY));
+            const char *header =
                     "HTTP/1.1 200 OK\r\n"
-                    "Content-Type: text/html\r\n\r\n"
-                    "<html><body><h1>Hello, World!</h1></body></html>\r\n";
+                    "Content-Type: text/plain\r\n\r\n";
+
+            // Allocate memory for the full response
+            char *response = static_cast<char *>(malloc(strlen(header) + strlen(x) + 1));
+            if (response == NULL) {
+                free(x);
+                perror("Failed to allocate memory for HTTP response");
+                return NULL;
+            }
+
+            // Construct the response
+            strcpy(response, header);
+            strcat(response, x);
+
 
             // Send the response
             write(sock, response, strlen(response));

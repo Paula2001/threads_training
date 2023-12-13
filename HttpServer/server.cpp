@@ -7,7 +7,7 @@
 #include <netinet/in.h>
 #include <cstdint>
 
-#define PORT 8081
+#define PORT 8080
 #define BUFFER_SIZE 1024
 #define QUERY_PARAM_FILE_KEY "file_name"
 
@@ -43,6 +43,28 @@ char* readFileContent(const char *filename) {
     return content;
 }
 
+char* response(char* fileName) {
+    char* fileContent = readFileContent(fileName);
+
+    if(fileContent == NULL){
+        const char* notfound = "HTTP/1.1 404 Not Found\n\n"
+               "404 Not Found\n";
+        char *response = static_cast<char *>(malloc(strlen(notfound) + 1));
+
+        strcpy(response,notfound);
+        return response;
+    }
+
+    const char *OKheader =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/plain\r\n\r\n";
+    char *response = static_cast<char *>(malloc(strlen(OKheader) + strlen(fileContent) + 1));
+
+    // Construct the response
+    strcpy(response, OKheader);
+    strcat(response, fileContent);
+    return response;
+}
 
 char* get_query_param_value(const char* query, const char* key) {
     if (query == NULL || key == NULL) {
@@ -98,26 +120,10 @@ void *handle_connection(void *socket_desc) {
                 query++;
                 printf("Query params: %s\n", query);
             }
-            char* x = readFileContent(get_query_param_value(query, QUERY_PARAM_FILE_KEY));
-            const char *header =
-                    "HTTP/1.1 200 OK\r\n"
-                    "Content-Type: text/plain\r\n\r\n";
 
-            // Allocate memory for the full response
-            char *response = static_cast<char *>(malloc(strlen(header) + strlen(x) + 1));
-            if (response == NULL) {
-                free(x);
-                perror("Failed to allocate memory for HTTP response");
-                return NULL;
-            }
-
-            // Construct the response
-            strcpy(response, header);
-            strcat(response, x);
-
-
+            char* r = response(get_query_param_value(query, QUERY_PARAM_FILE_KEY));
             // Send the response
-            write(sock, response, strlen(response));
+            write(sock, r, strlen(r));
         }
     }
 

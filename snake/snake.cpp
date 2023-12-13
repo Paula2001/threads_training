@@ -9,7 +9,7 @@
 #include <semaphore.h>
 #include <fcntl.h> // For O_* constants
 
-#define PORT 9131
+#define PORT 9132
 #define WIDTH 20
 #define HEIGHT 10
 #define MAX_SNAKE_SIZE WIDTH * HEIGHT
@@ -42,6 +42,8 @@ typedef struct {
 typedef struct {
     Snake snake;
     char board[HEIGHT][WIDTH];
+    int currentPlayer;
+    int playerCount;
 } Game;
 
 // Global semaphore pointer
@@ -51,7 +53,7 @@ sem_t *player[2];
 void initBoard(char board[HEIGHT][WIDTH]) {
     for (int y = 0; y < HEIGHT; y++) {
         for (int x = 0; x < WIDTH; x++) {
-            board[y][x] = ' ';
+            board[y][x] = '.';
         }
     }
 }
@@ -81,9 +83,9 @@ void moveSnake(Snake *snake, Point *prevHead) {
 }
 
 int updateBoard(Snake *snake, char board[HEIGHT][WIDTH], Point prevHead) {
-    if (prevHead.x >= 0 && prevHead.x < WIDTH && prevHead.y >= 0 && prevHead.y < HEIGHT) {
+//    if (prevHead.x >= 0 && prevHead.x < WIDTH && prevHead.y >= 0 && prevHead.y < HEIGHT) {
         board[prevHead.y][prevHead.x] = 'X';
-    }
+//    }
 
     Point head = snake->body[0];
     if (head.x < 0 || head.x >= WIDTH || head.y < 0 || head.y >= HEIGHT) {

@@ -6,10 +6,15 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <cstdint>
-
-#define PORT 8080
+#include <time.h>
+#include <semaphore.h>
+#define PORT 8081
 #define BUFFER_SIZE 1024
 #define QUERY_PARAM_FILE_KEY "file_name"
+#define CHUNK_SIZE 100  // bytes
+#define DELAY_TIME 5    // second
+
+sem_t block;
 
 char* readFileContent(const char *filename) {
     FILE *file;
@@ -101,6 +106,7 @@ void *handle_connection(void *socket_desc) {
 
     // Read the request
     read_size = read(sock, buffer, BUFFER_SIZE - 1);
+    sem_wait(&block);
     if (read_size > 0) {
         printf("Received request:\n%s\n", buffer);
 
@@ -120,18 +126,22 @@ void *handle_connection(void *socket_desc) {
                 query++;
                 printf("Query params: %s\n", query);
             }
-
+            struct timespec delay;
+            delay.tv_sec = DELAY_TIME;
+            delay.tv_nsec = 0;
+            nanosleep(&delay, NULL); // sleep for 1 second
             char* r = response(get_query_param_value(query, QUERY_PARAM_FILE_KEY));
             // Send the response
             write(sock, r, strlen(r));
         }
     }
-
+    sem_post(&block);
     close(sock);
     pthread_exit(NULL);
 }
 
 int main() {
+    sem_init(&block, 0, 1);
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addr_len = sizeof(address);

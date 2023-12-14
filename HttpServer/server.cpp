@@ -15,6 +15,9 @@
 #define DELAY_TIME 1    // second
 
 sem_t block;
+int pipefd[2];
+pid_t pid;
+char buffer[BUFFER_SIZE];
 
 char* readFileContent(const char *filename) {
     FILE *file;
@@ -48,26 +51,26 @@ char* readFileContent(const char *filename) {
     return content;
 }
 
-char* response(char* fileName) {
-    char* fileContent = readFileContent(fileName);
+char* response() {
 
-    if(fileContent == NULL){
-        const char* notfound = "HTTP/1.1 404 Not Found\n\n"
-               "404 Not Found\n";
-        char *response = static_cast<char *>(malloc(strlen(notfound) + 1));
-
-        strcpy(response,notfound);
-        return response;
+    // Read the output from the child process
+    ssize_t numBytes = read(pipefd[0], buffer, sizeof(buffer) - 1);
+    if (numBytes < 0) {
+        perror("read");
+        exit(EXIT_FAILURE);
     }
 
+    buffer[numBytes] = '\0'; // Null-terminate the string
+
+    // Construct the response
     const char *OKheader =
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: text/plain\r\n\r\n";
-    char *response = static_cast<char *>(malloc(strlen(OKheader) + strlen(fileContent) + 1));
-
-    // Construct the response
+    char *response = (char *)malloc(strlen(OKheader) + strlen(buffer) + 1);
     strcpy(response, OKheader);
-    strcat(response, fileContent);
+    strcat(response, buffer);
+
+    close(pipefd[0]); // Close read end
     return response;
 }
 
@@ -102,44 +105,43 @@ void *handle_connection(int sock) {
     char buffer[BUFFER_SIZE];
     ssize_t read_size;
 
-    pid_t x = fork();
     // Read the request
-    if(x == 0){
+    pid_t pid = fork();
+    if(pid == 0) {
+        // Child process
         read_size = read(sock, buffer, BUFFER_SIZE - 1);
-        sem_wait(&block);
         if (read_size > 0) {
+            buffer[read_size] = '\0'; // Null-terminate the request string
             printf("Received request:\n%s\n", buffer);
 
             // Check if the request is a GET request
             if (strncmp(buffer, "GET", 3) == 0) {
-                char *start = strchr(buffer, ' ') + 1;
-                char *end = strchr(start, ' ');
+                // Prepare for sending the command output
+                const char *OKheader =
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: text/plain\r\n\r\n";
+                write(sock, OKheader, strlen(OKheader));
 
-                // Extract the path and query
-                char path_and_query[1024] = {0};
-                strncpy(path_and_query, start, end - start);
+                // Redirect STDOUT to socket
+                dup2(sock, STDOUT_FILENO);
 
-                // Optionally, separate the path and the query
-                char *query = strchr(path_and_query, '?');
-                if (query) {
-                    // Skip over the '?' to get the query parameters
-                    query++;
-                    printf("Query params: %s\n", query);
-                }
-                struct timespec delay;
-                delay.tv_sec = DELAY_TIME;
-                delay.tv_nsec = 0;
-                nanosleep(&delay, NULL); // sleep for 1 second
-                char* r = response(get_query_param_value(query, QUERY_PARAM_FILE_KEY));
-                // Send the response
-                write(sock, r, strlen(r));
+                // Execute the command
+                execlp("ls", "ls", "-l", NULL);
+
+                // If execlp returns, it must have failed
+                perror("execlp");
+                exit(EXIT_FAILURE);
             }
         }
-        sem_post(&block);
         close(sock);
         exit(0);
+    } else {
+        // Parent process
+        close(sock);
     }
+    return 0;
 }
+
 
 int main() {
     sem_init(&block, 0, 1);

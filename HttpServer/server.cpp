@@ -12,7 +12,7 @@
 #define BUFFER_SIZE 1024
 #define QUERY_PARAM_FILE_KEY "file_name"
 #define CHUNK_SIZE 100  // bytes
-#define DELAY_TIME 5    // second
+#define DELAY_TIME 1    // second
 
 sem_t block;
 
@@ -98,46 +98,47 @@ char* get_query_param_value(const char* query, const char* key) {
     return value;
 }
 
-void *handle_connection(void *socket_desc) {
-    int* s = (int *)socket_desc;
-    int sock = (uintptr_t)s;
+void *handle_connection(int sock) {
     char buffer[BUFFER_SIZE];
     ssize_t read_size;
 
+    pid_t x = fork();
     // Read the request
-    read_size = read(sock, buffer, BUFFER_SIZE - 1);
-    sem_wait(&block);
-    if (read_size > 0) {
-        printf("Received request:\n%s\n", buffer);
+    if(x == 0){
+        read_size = read(sock, buffer, BUFFER_SIZE - 1);
+        sem_wait(&block);
+        if (read_size > 0) {
+            printf("Received request:\n%s\n", buffer);
 
-        // Check if the request is a GET request
-        if (strncmp(buffer, "GET", 3) == 0) {
-            char *start = strchr(buffer, ' ') + 1;
-            char *end = strchr(start, ' ');
+            // Check if the request is a GET request
+            if (strncmp(buffer, "GET", 3) == 0) {
+                char *start = strchr(buffer, ' ') + 1;
+                char *end = strchr(start, ' ');
 
-            // Extract the path and query
-            char path_and_query[1024] = {0};
-            strncpy(path_and_query, start, end - start);
+                // Extract the path and query
+                char path_and_query[1024] = {0};
+                strncpy(path_and_query, start, end - start);
 
-            // Optionally, separate the path and the query
-            char *query = strchr(path_and_query, '?');
-            if (query) {
-                // Skip over the '?' to get the query parameters
-                query++;
-                printf("Query params: %s\n", query);
+                // Optionally, separate the path and the query
+                char *query = strchr(path_and_query, '?');
+                if (query) {
+                    // Skip over the '?' to get the query parameters
+                    query++;
+                    printf("Query params: %s\n", query);
+                }
+                struct timespec delay;
+                delay.tv_sec = DELAY_TIME;
+                delay.tv_nsec = 0;
+                nanosleep(&delay, NULL); // sleep for 1 second
+                char* r = response(get_query_param_value(query, QUERY_PARAM_FILE_KEY));
+                // Send the response
+                write(sock, r, strlen(r));
             }
-            struct timespec delay;
-            delay.tv_sec = DELAY_TIME;
-            delay.tv_nsec = 0;
-            nanosleep(&delay, NULL); // sleep for 1 second
-            char* r = response(get_query_param_value(query, QUERY_PARAM_FILE_KEY));
-            // Send the response
-            write(sock, r, strlen(r));
         }
+        sem_post(&block);
+        close(sock);
+        exit(0);
     }
-    sem_post(&block);
-    close(sock);
-    pthread_exit(NULL);
 }
 
 int main() {
@@ -180,14 +181,10 @@ int main() {
         }
 
         pthread_t thread_id;
+        handle_connection(new_socket);
 
-        if (pthread_create(&thread_id, NULL, handle_connection, (void*)new_socket) < 0) {
-            perror("Could not create thread");
-            continue;
-        }
 
         // Optionally detach the thread
-        pthread_detach(thread_id);
     }
 
     return 0;

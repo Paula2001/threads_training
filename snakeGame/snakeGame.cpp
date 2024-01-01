@@ -6,12 +6,8 @@
 #define BOARD_SYMBOL " [-] "
 #define SNAKE_BODY_SYMBOL "  ~  "
 #define SNAKE_HEAD " <:~ "
-#define SNAKE_DEFAULT_SIZE 3
+#define SNAKE_DEFAULT_SIZE 5
 using namespace std;
-
-// TODO : move the snake
-// TODO : create snake
-
 bool contains(const std::vector<std::pair<int, int>>& snakeBody, const std::pair<int, int>& target) {
     for (const auto& segment : snakeBody) {
         if (segment == target) {
@@ -20,22 +16,55 @@ bool contains(const std::vector<std::pair<int, int>>& snakeBody, const std::pair
     }
     return false;
 }
+
 vector<pair<int, int>> createSnakeBody(int snakeSize) {
     vector<pair<int, int>> snakeBody;
 
     for (int i = 0; i < snakeSize; ++i) {
-        // Assuming a horizontal snake for example purposes
         snakeBody.push_back({0, i});
     }
 
     return snakeBody;
 }
-string initBoard() {
-    vector<pair<int, int>> snake = createSnakeBody(3);
+
+vector<pair<int, int>> snake = createSnakeBody(SNAKE_DEFAULT_SIZE);
+
+void moveSnake(pair<int, int> headPosition) {
+    for (int i = 0; i < SNAKE_DEFAULT_SIZE; ++i) {
+        int nextCell = i + 1;
+        int cell = i;
+        if(nextCell == SNAKE_DEFAULT_SIZE){
+            snake[cell] = headPosition;
+        }else{
+            snake[cell] = snake[nextCell];
+        }
+    }
+}
+
+pair<int,int> getNextSnakeHeadMove(char movement) {
+    pair<int,int> snakeHead = snake.back();
+    // ? V , H
+    switch (movement) {
+        case 'u':
+            return {snakeHead.first - 1, snakeHead.second};
+        case 'd':
+            return {snakeHead.first + 1, snakeHead.second};
+        case 'r':
+            return {snakeHead.first, snakeHead.second + 1};
+        case 'l':
+            return {snakeHead.first, snakeHead.second - 1};
+        default:
+            return snakeHead;
+    }
+}
+
+string initBoard(pair<int, int> headPos) {
+    moveSnake(headPos);
     pair<int, int> snakeHead = snake.back();
     string board;
     for (int i = 0; i < BOARD_V; ++i) {
         for(int j = 0; j < BOARD_H; ++j){
+            // ? V, H
             pair<int, int> currentSqu = {i, j};
             if(contains(snake, currentSqu)){
                 if (snakeHead == currentSqu){
@@ -53,5 +82,11 @@ string initBoard() {
 }
 
 int main() {
-    std::cout << initBoard();
+    char move ;
+    while (move != 'c'){
+        cout << "Insert the char \n";
+        cin >> move;
+        pair<int, int> newHead = getNextSnakeHeadMove(move);
+        cout << initBoard(newHead);
+    }
 }

@@ -59,10 +59,20 @@ pair<int,int> getNextSnakeHeadMove(char movement) {
             }
             return {v, snakeHead.second};
         }
-        case 'r':
-            return {snakeHead.first, snakeHead.second + 1};
-        case 'l':
-            return {snakeHead.first, snakeHead.second - 1};
+        case 'r':{
+            int h = snakeHead.second + 1;
+            if(h > 9){
+                h = 0;
+            }
+            return {snakeHead.first, h};
+        }
+        case 'l':{
+            int h = snakeHead.second - 1;
+            if(h < 0){
+                h = 9;
+            }
+            return {snakeHead.first, h};
+        }
         default:
             return snakeHead;
     }

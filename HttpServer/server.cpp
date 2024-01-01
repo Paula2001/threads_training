@@ -2,11 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <cstdint>
-#include <time.h>
 #include <semaphore.h>
 #define PORT 8081
 #define BUFFER_SIZE 1024
@@ -91,6 +88,10 @@ char* get_query_param_value(const char* query, const char* key) {
             // Find the start of the value
             char* value_start = strchr(token, '=') + 1;
             value = strdup(value_start);
+            char *spacePtr = strchr(value, ' '); // Find the first space
+            int index = spacePtr - value; // Calculate the index
+            value[index] = '\0';
+
             break;
         }
         token = strtok(NULL, "&");
@@ -109,6 +110,7 @@ void *handle_connection(int sock) {
     pid_t pid = fork();
     if(pid == 0) {
         // Child process
+        sem_wait(&block);
         read_size = read(sock, buffer, BUFFER_SIZE - 1);
         if (read_size > 0) {
             buffer[read_size] = '\0'; // Null-terminate the request string
@@ -116,6 +118,15 @@ void *handle_connection(int sock) {
 
             // Check if the request is a GET request
             if (strncmp(buffer, "GET", 3) == 0) {
+                // Extract the query parameter
+                char *query = strstr(buffer, "?");
+                printf("%s\n", query);
+                char *fileName = NULL;
+                if (query) {
+                    query++; // Move past the '?'
+                    fileName = get_query_param_value(query, QUERY_PARAM_FILE_KEY);
+                    printf("%s\n", fileName);
+                }
                 // Prepare for sending the command output
                 const char *OKheader =
                         "HTTP/1.1 200 OK\r\n"
@@ -125,14 +136,16 @@ void *handle_connection(int sock) {
                 // Redirect STDOUT to socket
                 dup2(sock, STDOUT_FILENO);
 
-                // Execute the command
-                execlp("ls", "ls", "-l", NULL);
+                    // Execute the command with the specified file name
+                execlp(fileName, NULL);
+
 
                 // If execlp returns, it must have failed
                 perror("execlp");
                 exit(EXIT_FAILURE);
             }
         }
+        sem_post(&block);
         close(sock);
         exit(0);
     } else {
@@ -143,8 +156,9 @@ void *handle_connection(int sock) {
 }
 
 
+
 int main() {
-    sem_init(&block, 0, 1);
+    sem_init(&block, 1, 1);
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addr_len = sizeof(address);
@@ -182,7 +196,6 @@ int main() {
             continue;
         }
 
-        pthread_t thread_id;
         handle_connection(new_socket);
 
 

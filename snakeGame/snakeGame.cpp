@@ -45,10 +45,20 @@ pair<int,int> getNextSnakeHeadMove(char movement) {
     pair<int,int> snakeHead = snake.back();
     // ? V , H
     switch (movement) {
-        case 'u':
-            return {snakeHead.first - 1, snakeHead.second};
-        case 'd':
-            return {snakeHead.first + 1, snakeHead.second};
+        case 'u':{
+            int v = snakeHead.first - 1;
+            if (v < 0){
+                v = 9;
+            }
+            return {v, snakeHead.second};
+        }
+        case 'd':{
+            int v = snakeHead.first + 1;
+            if(v > 9){
+                v = 0;
+            }
+            return {v, snakeHead.second};
+        }
         case 'r':
             return {snakeHead.first, snakeHead.second + 1};
         case 'l':

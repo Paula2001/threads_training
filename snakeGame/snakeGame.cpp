@@ -43,39 +43,45 @@ void moveSnake(pair<int, int> headPosition) {
 
 pair<int,int> getNextSnakeHeadMove(char movement) {
     pair<int,int> snakeHead = snake.back();
+    pair<int,int> prelastcell = snake[SNAKE_DEFAULT_SIZE - 2];
+    int v = snakeHead.first;
+    int h = snakeHead.second;
     // ? V , H
     switch (movement) {
         case 'u':{
-            int v = snakeHead.first - 1;
+            v = v - 1;
             if (v < 0){
                 v = 9;
             }
-            return {v, snakeHead.second};
+            break;
         }
         case 'd':{
-            int v = snakeHead.first + 1;
+            v = v + 1;
             if(v > 9){
                 v = 0;
             }
-            return {v, snakeHead.second};
+            break;
         }
         case 'r':{
-            int h = snakeHead.second + 1;
+            h = h + 1;
             if(h > 9){
                 h = 0;
             }
-            return {snakeHead.first, h};
+            break;
         }
         case 'l':{
-            int h = snakeHead.second - 1;
+            h = h - 1;
             if(h < 0){
                 h = 9;
             }
-            return {snakeHead.first, h};
+            break;
         }
-        default:
-            return snakeHead;
     }
+    pair<int, int> result = {v,h};
+    if(result == prelastcell){
+         return snake.front();
+    }
+    return result;
 }
 
 string initBoard(pair<int, int> headPos) {

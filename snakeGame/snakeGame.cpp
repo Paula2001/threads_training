@@ -30,15 +30,27 @@ vector<pair<int, int>> createSnakeBody(int snakeSize) {
 vector<pair<int, int>> snake = createSnakeBody(SNAKE_DEFAULT_SIZE);
 
 void moveSnake(pair<int, int> headPosition) {
-    for (int i = 0; i < SNAKE_DEFAULT_SIZE; ++i) {
-        int nextCell = i + 1;
-        int cell = i;
-        if(nextCell == SNAKE_DEFAULT_SIZE){
-            snake[cell] = headPosition;
-        }else{
-            snake[cell] = snake[nextCell];
+    if(headPosition == snake[0]){
+        // TODO : flipped scenario
+        int last = SNAKE_DEFAULT_SIZE - 1;
+        auto x = snake;
+        for(int i = 0; i < SNAKE_DEFAULT_SIZE;i++,last--){
+            x[i] = snake[last];
+        }
+        snake = x;
+    }else{
+        // ? : normal scenario
+        for (int i = 0; i < SNAKE_DEFAULT_SIZE; ++i) {
+            int nextCell = i + 1;
+            int cell = i;
+            if(nextCell == SNAKE_DEFAULT_SIZE){
+                snake[cell] = headPosition;
+            }else{
+                snake[cell] = snake[nextCell];
+            }
         }
     }
+
 }
 
 pair<int,int> getNextSnakeHeadMove(char movement) {
@@ -50,30 +62,22 @@ pair<int,int> getNextSnakeHeadMove(char movement) {
     switch (movement) {
         case 'u':{
             v = v - 1;
-            if (v < 0){
-                v = 9;
-            }
+            if (v < 0) v = 9;
             break;
         }
         case 'd':{
             v = v + 1;
-            if(v > 9){
-                v = 0;
-            }
+            if(v > 9) v = 0;
             break;
         }
         case 'r':{
             h = h + 1;
-            if(h > 9){
-                h = 0;
-            }
+            if(h > 9) h = 0;
             break;
         }
         case 'l':{
             h = h - 1;
-            if(h < 0){
-                h = 9;
-            }
+            if(h < 0) h = 9;
             break;
         }
     }

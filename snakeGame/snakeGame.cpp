@@ -5,7 +5,7 @@
 #define BOARD_V 10
 #define BOARD_SYMBOL " [-] "
 #define SNAKE_BODY_SYMBOL "  ~  "
-#define SNAKE_HEAD " <:~ "
+#define SNAKE_HEAD " °͜ʖ° "
 #define SNAKE_DEFAULT_SIZE 5
 using namespace std;
 bool contains(const std::vector<std::pair<int, int>>& snakeBody, const std::pair<int, int>& target) {
@@ -88,8 +88,7 @@ pair<int,int> getNextSnakeHeadMove(char movement) {
     return result;
 }
 
-string initBoard(pair<int, int> headPos) {
-    moveSnake(headPos);
+string getBoard() {
     pair<int, int> snakeHead = snake.back();
     string board;
     for (int i = 0; i < BOARD_V; ++i) {
@@ -113,10 +112,16 @@ string initBoard(pair<int, int> headPos) {
 
 int main() {
     char move ;
-    while (move != 'c'){
-        cout << "Insert the char \n";
+    while (true){
+        cout << "What's your next move (u,d,l,r) or 'q' for quit \n";
         cin >> move;
+        if(move == 'q'){
+            cout << "thank you for playing this useless game :)" <<endl;
+            break;
+        }
         pair<int, int> newHead = getNextSnakeHeadMove(move);
-        cout << initBoard(newHead);
+        moveSnake(newHead);
+        system("clear");
+        cout << getBoard();
     }
 }
